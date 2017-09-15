@@ -72,7 +72,7 @@ __global__ void temporalReprojection(
 	idaten::SVGFPathTracing::AOV* prevAovs,
 	const aten::mat4* __restrict__ mtxs,
 	cudaSurfaceObject_t dst,
-	float4* tmpBuffer,
+	idaten::SVGFPathTracing::Store* tmpBuffer,
 	int width, int height)
 {
 	int ix = blockIdx.x * blockDim.x + threadIdx.x;
@@ -90,26 +90,29 @@ __global__ void temporalReprojection(
 	const int centerMeshId = curAovs[idx].meshid;
 
 	// 今回のフレームのピクセルカラー.
-	float4 curColor = make_float4(path.contrib.x, path.contrib.y, path.contrib.z, 0) / path.samples;
-	curColor.w = 1;
+	float4 curColorIndirect = make_float4(path.contrib.x, path.contrib.y, path.contrib.z, 0) / path.samples;
+	curColorIndirect.w = 1;
+
+	float4 curColorDirect = curAovs[idx].color[idaten::SVGFPathTracing::LightType::Direct];
 
 	if (centerMeshId < 0) {
 		// 背景なので、そのまま出力して終わり.
 		surf2Dwrite(
-			curColor,
+			curColorDirect,
 			dst,
 			ix * sizeof(float4), iy,
 			cudaBoundaryModeTrap);
 
-		curAovs[idx].color = curColor;
-		curAovs[idx].moments = make_float4(1);
+		curAovs[idx].color[0] = curAovs[idx].color[1] = curColorDirect;
+		curAovs[idx].moments[0] = curAovs[idx].moments[1] = make_float4(1);
 
 		return;
 	}
 
 	auto centerNormal = curAovs[idx].normal;
 
-	float4 sum = make_float4(0, 0, 0, 0);
+	float4 sumDirect = make_float4(0, 0, 0, 0);
+	float4 sumIndirect = make_float4(0, 0, 0, 0);
 	float weight = 0.0f;
 
 	static const float zThreshold = 0.05f;
@@ -160,31 +163,40 @@ __global__ void temporalReprojection(
 				float Wm = centerMeshId == prevMeshId ? 1.0f : 0.0f;
 
 				// 前のフレームのピクセルカラーを取得.
-				float4 prev = prevAovs[pidx].color;
+				float4 prevDirect = prevAovs[pidx].color[idaten::SVGFPathTracing::LightType::Direct];
+				float4 prevIndirect = prevAovs[pidx].color[idaten::SVGFPathTracing::LightType::Indirect];
 
 				float W = Wz * Wn * Wm;
-				sum += prev * W;
+
+				sumDirect += prevDirect * W;
+				sumIndirect += prevIndirect * W;
+
 				weight += W;
 			}
 		}
 	}
 	
 	if (weight > 0.0f) {
-		sum /= weight;
+		sumDirect /= weight;
+		sumIndirect /= weight;
+
 		weight /= 9;
 #if 0
 		curColor = 0.2 * curColor + 0.8 * sum;
 #else
-		curColor = (1.0f - weight) * curColor + weight * sum;
+		curColorDirect = (1.0f - weight) * curColorDirect + weight * sumDirect;
+		curColorIndirect = (1.0f - weight) * curColorIndirect + weight * sumIndirect;
 #endif
 	}
 
 	curAovs[idx].temporalWeight = weight;
 
 #ifdef ENABLE_MEDIAN_FILTER
-	tmpBuffer[idx] = curColor;
+	curAovs[idx].color[idaten::SVGFPathTracing::LightType::Direct] = curColorDirect;
+	tmpBuffer[idx].f[idaten::SVGFPathTracing::LightType::Indirect] = curColorIndirect;
 #else
-	curAovs[idx].color = curColor;
+	curAovs[idx].color[idaten::SVGFPathTracing::LightType::Direct] = curColorDirect;
+	curAovs[idx].color[idaten::SVGFPathTracing::LightType::Indirect] = curColorIndirect;
 
 	// TODO
 	// 現フレームと過去フレームが同率で加算されるため、どちらかに強い影響がでると影響が弱まるまでに非常に時間がかかる.
@@ -194,8 +206,11 @@ __global__ void temporalReprojection(
 
 	// accumulate moments.
 	{
-		float lum = AT_NAME::color::luminance(curColor.x, curColor.y, curColor.z);
-		float4 centerMoment = make_float4(lum * lum, lum, 0, 0);
+		float lumDirect = AT_NAME::color::luminance(curColorDirect.x, curColorDirect.y, curColorDirect.z);
+		float4 centerMomentDirect = make_float4(lumDirect * lumDirect, lumDirect, 0, 0);
+
+		float lumIndirect = AT_NAME::color::luminance(curColorIndirect.x, curColorIndirect.y, curColorIndirect.z);
+		float4 centerMomentIndirect = make_float4(lumIndirect * lumIndirect, lumIndirect, 0, 0);
 
 		// 前のフレームのクリップ空間座標を計算.
 		aten::vec4 prevPos;
@@ -231,23 +246,27 @@ __global__ void temporalReprojection(
 				&& dot(centerNormal, prevNormal) > nThreshold
 				&& centerMeshId == prevMeshId)
 			{
-				float4 prevMoment = prevAovs[pidx].moments;
+				float4 prevMomentDirect = prevAovs[pidx].moments[idaten::SVGFPathTracing::LightType::Direct];
+				float4 prevMomentIndirect = prevAovs[pidx].moments[idaten::SVGFPathTracing::LightType::Indirect];
 
 				// 積算フレーム数を１増やす.
-				frame = (int)prevMoment.w + 1;
+				frame = (int)prevMomentDirect.w + 1;
 
-				centerMoment += prevMoment;
+				centerMomentDirect += prevMomentDirect;
+				centerMomentIndirect += prevMomentIndirect;
 			}
 		}
 
-		centerMoment.w = frame;
+		centerMomentDirect.w = frame;
+		centerMomentIndirect.w = frame;
 
-		curAovs[idx].moments = centerMoment;
+		curAovs[idx].moments[idaten::SVGFPathTracing::LightType::Direct] = centerMomentDirect;
+		curAovs[idx].moments[idaten::SVGFPathTracing::LightType::Indirect] = centerMomentIndirect;
 	}
 #endif
 
 	surf2Dwrite(
-		curColor,
+		curColorDirect + curColorIndirect,
 		dst,
 		ix * sizeof(float4), iy,
 		cudaBoundaryModeTrap);
@@ -321,10 +340,10 @@ inline __device__ float4 max(float4 a, float4 b)
 #define mnmx5(a, b, c, d, e)	s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);           // 6 exchanges
 #define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f); // 7 exchanges
 
-template <bool isReferPath>
+template <bool isReferPath, int StoreIdx>
 inline __device__ float4 medianFilter(
 	int ix, int iy,
-	const float4* src,
+	const idaten::SVGFPathTracing::Store* src,
 	const idaten::SVGFPathTracing::Path* paths,
 	int width, int height)
 {
@@ -343,7 +362,7 @@ inline __device__ float4 medianFilter(
 				v[pos] = make_float4(paths[pidx].contrib.x, paths[pidx].contrib.y, paths[pidx].contrib.z, 0);
 			}
 			else {
-				v[pos] = src[pidx];
+				v[pos] = src[pidx].f[StoreIdx];
 			}
 			pos++;
 		}
@@ -361,7 +380,7 @@ inline __device__ float4 medianFilter(
 
 __global__ void medianFilter(
 	cudaSurfaceObject_t dst,
-	const float4* __restrict__ src,
+	const idaten::SVGFPathTracing::Store* __restrict__ src,
 	idaten::SVGFPathTracing::AOV* curAovs,
 	const idaten::SVGFPathTracing::AOV* __restrict__ prevAovs,
 	const aten::mat4* __restrict__ mtxs,
@@ -384,9 +403,12 @@ __global__ void medianFilter(
 		return;
 	}
 
-	auto curColor = medianFilter<false>(ix, iy, src, paths, width, height);
+	const auto curColorIndirect = medianFilter<false, idaten::SVGFPathTracing::LightType::Indirect>(
+		ix, iy, src, paths, width, height);
 
-	curAovs[idx].color = curColor;
+	curAovs[idx].color[idaten::SVGFPathTracing::LightType::Indirect] = curColorIndirect;
+
+	const auto curColorDirect = curAovs[idx].color[idaten::SVGFPathTracing::LightType::Direct];
 
 	const float centerDepth = curAovs[idx].depth;
 	const auto centerNormal = curAovs[idx].normal;
@@ -396,8 +418,11 @@ __global__ void medianFilter(
 
 	// accumulate moments.
 	{
-		float lum = AT_NAME::color::luminance(curColor.x, curColor.y, curColor.z);
-		float4 centerMoment = make_float4(lum * lum, lum, 0, 0);
+		float lumDirect = AT_NAME::color::luminance(curColorDirect.x, curColorDirect.y, curColorDirect.z);
+		float4 centerMomentDirect = make_float4(lumDirect * lumDirect, lumDirect, 0, 0);
+
+		float lumIndirect = AT_NAME::color::luminance(curColorIndirect.x, curColorIndirect.y, curColorIndirect.z);
+		float4 centerMomentIndirect = make_float4(lumIndirect * lumIndirect, lumIndirect, 0, 0);
 
 		// 前のフレームのクリップ空間座標を計算.
 		aten::vec4 prevPos;
@@ -433,22 +458,26 @@ __global__ void medianFilter(
 				&& dot(centerNormal, prevNormal) > nThreshold
 				&& centerMeshId == prevMeshId)
 			{
-				float4 prevMoment = prevAovs[pidx].moments;
+				float4 prevMomentDirect = prevAovs[pidx].moments[idaten::SVGFPathTracing::LightType::Direct];
+				float4 prevMomentIndirect = prevAovs[pidx].moments[idaten::SVGFPathTracing::LightType::Indirect];
 
 				// 積算フレーム数を１増やす.
-				frame = (int)prevMoment.w + 1;
+				frame = (int)prevMomentDirect.w + 1;
 
-				centerMoment += prevMoment;
+				centerMomentDirect += prevMomentDirect;
+				centerMomentIndirect += prevMomentIndirect;
 			}
 		}
 
-		centerMoment.w = frame;
+		centerMomentDirect.w = frame;
+		centerMomentIndirect.w = frame;
 
-		curAovs[idx].moments = centerMoment;
+		curAovs[idx].moments[idaten::SVGFPathTracing::LightType::Direct] = centerMomentDirect;
+		curAovs[idx].moments[idaten::SVGFPathTracing::LightType::Indirect] = centerMomentIndirect;
 	}
 
 	surf2Dwrite(
-		curColor,
+		curColorDirect + curColorIndirect,
 		dst,
 		ix * sizeof(float4), iy,
 		cudaBoundaryModeTrap);

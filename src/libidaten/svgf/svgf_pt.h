@@ -25,6 +25,12 @@ namespace idaten
 			WireFrame,
 		};
 
+		enum LightType {
+			Direct,
+			Indirect,
+			LightTypeNum,
+		};
+
 #ifdef __AT_CUDA__
 		struct Path {
 			aten::vec3 throughput;
@@ -48,12 +54,12 @@ namespace idaten
 			float temporalWeight;
 
 			float3 normal;
-			float var;
+			float var[LightType::LightTypeNum];
 
 			float4 texclr;
-			float4 color;
 
-			float4 moments;
+			float4 color[LightType::LightTypeNum];
+			float4 moments[LightType::LightTypeNum];
 		};
 #else
 		struct Path;
@@ -69,6 +75,10 @@ namespace idaten
 			int meshid;
 			int triid;
 			int mtrlid;
+		};
+
+		struct Store {
+			float4 f[LightType::LightTypeNum];
 		};
 
 	public:
@@ -220,6 +230,8 @@ namespace idaten
 			int width, int height,
 			cudaTextureObject_t texVtxPos);
 
+		void onCopyDirectLightResultToAovBuffer(int width, int height);
+
 		idaten::TypedCudaMemory<AOV>& getCurAovs()
 		{
 			return m_aovs[m_curAOVPos];
@@ -257,10 +269,10 @@ namespace idaten
 
 		unsigned int m_frame{ 1 };
 
-		idaten::TypedCudaMemory<float4> m_atrousClr[2];
-		idaten::TypedCudaMemory<float> m_atrousVar[2];
+		idaten::TypedCudaMemory<Store> m_atrousClr[2];
+		idaten::TypedCudaMemory<float2> m_atrousVar[2];
 
-		idaten::TypedCudaMemory<float4> m_tmpBuf;
+		idaten::TypedCudaMemory<Store> m_tmpBuf;
 
 		float m_thresholdTemporalWeight{ 0.0f };
 		int m_atrousTapRadiusScale{ 1 };

@@ -591,9 +591,9 @@ __global__ void gather(
 
 	float lum = AT_NAME::color::luminance(contrib.x, contrib.y, contrib.z);
 
-	aovs[idx].moments += make_float4(lum * lum, lum, 0, 1);
+	aovs[idx].moments[idaten::SVGFPathTracing::LightType::Indirect] += make_float4(lum * lum, lum, 0, 1);
 
-	aovs[idx].color = contrib;
+	aovs[idx].color[idaten::SVGFPathTracing::LightType::Indirect] = contrib;
 
 #if 0
 	auto n = aovs[idx].moments.w;
@@ -614,6 +614,36 @@ __global__ void gather(
 		ix * sizeof(float4), iy,
 		cudaBoundaryModeTrap);
 #endif
+}
+
+__global__ void copyDirectLightResultToAovBuffer(
+	idaten::SVGFPathTracing::Path* paths,
+	idaten::SVGFPathTracing::AOV* aovs,
+	int width, int height)
+{
+	auto ix = blockIdx.x * blockDim.x + threadIdx.x;
+	auto iy = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (ix >= width && iy >= height) {
+		return;
+	}
+
+	const auto idx = getIdx(ix, iy, width);
+
+	const auto& path = paths[idx];
+
+	int sample = path.samples;
+
+	float4 contrib = make_float4(path.contrib.x, path.contrib.y, path.contrib.z, 0) / sample;
+	contrib.w = sample;
+
+	aovs[idx].color[idaten::SVGFPathTracing::LightType::Direct] = contrib;
+	float lum = AT_NAME::color::luminance(contrib.x, contrib.y, contrib.z);
+
+	aovs[idx].moments[idaten::SVGFPathTracing::LightType::Direct] += make_float4(lum * lum, lum, 0, 1);
+
+	// Clear for accumulating indirect light contribution.
+	paths[idx].contrib = aten::vec3(0);
 }
 
 namespace idaten
@@ -743,6 +773,10 @@ namespace idaten
 					vtxTexPos);
 				
 				onShadeMiss(width, height, bounce);
+
+				if (bounce == 1) {
+					onCopyDirectLightResultToAovBuffer(width, height);
+				}
 
 				int hitcount = 0;
 				idaten::Compaction::compact(
@@ -1058,5 +1092,22 @@ namespace idaten
 		}
 
 		m_mtxPrevV2C = m_mtxV2C;
+	}
+
+	void SVGFPathTracing::onCopyDirectLightResultToAovBuffer(int width, int height)
+	{
+		dim3 block(BLOCK_SIZE, BLOCK_SIZE);
+		dim3 grid(
+			(width + block.x - 1) / block.x,
+			(height + block.y - 1) / block.y);
+
+		auto& curaov = getCurAovs();
+
+		copyDirectLightResultToAovBuffer << <grid, block >> > (
+			m_paths.ptr(),
+			curaov.ptr(),
+			width, height);
+
+		checkCudaKernel(copyDirectLightResultToAovBuffer);
 	}
 }

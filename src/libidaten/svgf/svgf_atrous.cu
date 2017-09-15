@@ -76,10 +76,12 @@ inline __device__ float ddy(
 	return bottom - top;
 }
 
+template <bool isReferAOV, int Target>
 inline __device__ float gaussFilter3x3(
 	int ix, int iy,
 	int w, int h,
-	idaten::SVGFPathTracing::AOV* aov)
+	idaten::SVGFPathTracing::AOV* aov,
+	const float2* __restrict__ var)
 {
 	static const float kernel[] = {
 		1.0 / 16.0, 1.0 / 8.0, 1.0 / 16.0,
@@ -98,40 +100,13 @@ inline __device__ float gaussFilter3x3(
 
 			int idx = getIdx(xx, yy, w);
 
-			float tmp = aov[idx].var;
-
-			sum += kernel[pos] * tmp;
-
-			pos++;
-		}
-	}
-
-	return sum;
-}
-
-inline __device__ float gaussFilter3x3(
-	int ix, int iy,
-	int w, int h,
-	const float* __restrict__ var)
-{
-	static const float kernel[] = {
-		1.0 / 16.0, 1.0 / 8.0, 1.0 / 16.0,
-		1.0 / 8.0,  1.0 / 4.0, 1.0 / 8.0,
-		1.0 / 16.0, 1.0 / 8.0, 1.0 / 16.0,
-	};
-
-	float sum = 0;
-
-	int pos = 0;
-
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			int xx = clamp(ix + x, 0, w - 1);
-			int yy = clamp(iy + y, 0, h - 1);
-
-			int idx = getIdx(xx, yy, w);
-
-			float tmp = var[idx];
+			float tmp;
+			if (isReferAOV) {
+				tmp = aov[idx].var[Target];
+			}
+			else {
+				tmp = Target == 0 ? var[idx].x : var[idx].y;
+			}
 
 			sum += kernel[pos] * tmp;
 
@@ -145,12 +120,12 @@ inline __device__ float gaussFilter3x3(
 template <bool isFirstIter, bool isFinalIter>
 __global__ void atrousFilter(
 	cudaSurfaceObject_t dst,
-	float4* tmpBuffer,
+	idaten::SVGFPathTracing::Store* tmpBuffer,
 	idaten::SVGFPathTracing::AOV* aovs,
-	const float4* __restrict__ clrBuffer,
-	float4* nextClrBuffer,
-	const float* __restrict__ varBuffer,
-	float* nextVarBuffer,
+	const idaten::SVGFPathTracing::Store* __restrict__ clrBuffer,
+	idaten::SVGFPathTracing::Store* nextClrBuffer,
+	const float2* __restrict__ varBuffer,
+	float2* nextVarBuffer,
 	int stepScale,
 	float thresholdTemporalWeight,
 	int radiusScale,
@@ -174,24 +149,27 @@ __global__ void atrousFilter(
 	float tmpDdzY = ddy(ix, iy, width, height, aovs);
 	float2 ddZ = make_float2(tmpDdzX, tmpDdzY);
 
-	float4 centerColor;
+	float4 centerColorDirect;
+	float4 centerColorIndirect;
 
 	if (isFirstIter) {
-		centerColor = aovs[idx].color;
+		centerColorDirect = aovs[idx].color[idaten::SVGFPathTracing::LightType::Direct];
+		centerColorIndirect = aovs[idx].color[idaten::SVGFPathTracing::LightType::Indirect];
 	}
 	else {
-		centerColor = clrBuffer[idx];
+		centerColorDirect = clrBuffer[idx].f[idaten::SVGFPathTracing::LightType::Direct];
+		centerColorIndirect = clrBuffer[idx].f[idaten::SVGFPathTracing::LightType::Indirect];
 	}
 
 	if (centerMeshId < 0) {
 		// 背景なので、そのまま出力して終了.
-		nextClrBuffer[idx] = centerColor;
+		nextClrBuffer[idx].f[idaten::SVGFPathTracing::LightType::Direct] = centerColorDirect;
 
 		if (isFinalIter) {
-			centerColor *= aovs[idx].texclr;
+			centerColorDirect *= aovs[idx].texclr;
 
 			surf2Dwrite(
-				centerColor,
+				centerColorDirect,
 				dst,
 				ix * sizeof(float4), iy,
 				cudaBoundaryModeTrap);
@@ -200,19 +178,24 @@ __global__ void atrousFilter(
 		return;
 	}
 
-	float centerLum = AT_NAME::color::luminance(centerColor.x, centerColor.y, centerColor.z);
+	float centerLumDirect = AT_NAME::color::luminance(centerColorDirect.x, centerColorDirect.y, centerColorDirect.z);
+	float centerLumIndirect = AT_NAME::color::luminance(centerColorIndirect.x, centerColorIndirect.y, centerColorIndirect.z);
 
 	// ガウスフィルタ3x3
-	float gaussedVarLum;
+	float gaussedVarLumDirect;
+	float gaussedVarLumIndirect;
 	
 	if (isFirstIter) {
-		gaussedVarLum = gaussFilter3x3(ix, iy, width, height, aovs);
+		gaussedVarLumDirect = gaussFilter3x3<true, idaten::SVGFPathTracing::LightType::Direct>(ix, iy, width, height, aovs, varBuffer);
+		gaussedVarLumIndirect = gaussFilter3x3<true, idaten::SVGFPathTracing::LightType::Indirect>(ix, iy, width, height, aovs, varBuffer);
 	}
 	else {
-		gaussedVarLum = gaussFilter3x3(ix, iy, width, height, varBuffer);
+		gaussedVarLumDirect = gaussFilter3x3<false, idaten::SVGFPathTracing::LightType::Direct>(ix, iy, width, height, aovs, varBuffer);
+		gaussedVarLumIndirect = gaussFilter3x3<false, idaten::SVGFPathTracing::LightType::Indirect>(ix, iy, width, height, aovs, varBuffer);
 	}
 
-	float sqrGaussedVarLum = sqrt(gaussedVarLum);
+	float sqrGaussedVarLumDirect = sqrt(gaussedVarLumDirect);
+	float sqrGaussedVarLumIndirect = sqrt(gaussedVarLumIndirect);
 
 	static const float sigmaZ = 1.0f;
 	static const float sigmaN = 128.0f;
@@ -223,11 +206,17 @@ __global__ void atrousFilter(
 	// NOTE
 	// 5x5
 
-	float4 sumC = make_float4(0, 0, 0, 0);
-	float weightC = 0;
+	float4 sumClrDirect = make_float4(0, 0, 0, 0);
+	float weightClrDirect = 0;
 
-	float sumV = 0;
-	float weightV = 0;
+	float4 sumClrIndirect = make_float4(0, 0, 0, 0);
+	float weightClrIndirect = 0;
+
+	float sumVarDirect = 0;
+	float weightVarDirect = 0;
+
+	float sumVarIndirect = 0;
+	float weightVarIndirect = 0;
 
 	int pos = 0;
 
@@ -265,68 +254,87 @@ __global__ void atrousFilter(
 
 			auto normal = aovs[qidx].normal;
 
-			float4 color;
-			float variance;
+			float4 colorDirect;
+			float4 colorIndirect;
+
+			float varDirect;
+			float varIndirect;
 
 			if (isFirstIter) {
-				color = aovs[qidx].color;
-				variance = aovs[qidx].var;
+				colorDirect = aovs[qidx].color[idaten::SVGFPathTracing::LightType::Direct];
+				varDirect = aovs[qidx].var[idaten::SVGFPathTracing::LightType::Direct];
+
+				colorIndirect = aovs[qidx].color[idaten::SVGFPathTracing::LightType::Indirect];
+				varIndirect = aovs[qidx].var[idaten::SVGFPathTracing::LightType::Indirect];
 			}
 			else {
-				color = clrBuffer[qidx];
-				variance = varBuffer[qidx];
+				colorDirect = clrBuffer[qidx].f[idaten::SVGFPathTracing::LightType::Direct];
+				varDirect = varBuffer[qidx].x;
+
+				colorIndirect = clrBuffer[qidx].f[idaten::SVGFPathTracing::LightType::Indirect];
+				varIndirect = varBuffer[qidx].y;
 			}
 
-			float lum = AT_NAME::color::luminance(color.x, color.y, color.z);
+			float lumDirect = AT_NAME::color::luminance(colorDirect.x, colorDirect.y, colorDirect.z);
+			float lumIndirect = AT_NAME::color::luminance(colorIndirect.x, colorIndirect.y, colorIndirect.z);
 
 			float Wz = min(exp(-abs(centerDepth - depth) / (sigmaZ * abs(dot(ddZ, p - q)) + 0.000001f)), 1.0f);
 
 			float Wn = pow(max(0.0f, dot(centerNormal, normal)), sigmaN);
 
-			float Wl = min(exp(-abs(centerLum - lum) / (sigmaL * sqrGaussedVarLum + 0.000001f)), 1.0f);
+			float Wl_Direct = min(exp(-abs(centerLumDirect - lumDirect) / (sigmaL * sqrGaussedVarLumDirect + 0.000001f)), 1.0f);
+			float Wl_Indirect = min(exp(-abs(centerLumIndirect - lumIndirect) / (sigmaL * sqrGaussedVarLumIndirect + 0.000001f)), 1.0f);
 
 			float Wm = meshid == centerMeshId ? 1.0f : 0.0f;
 
-			float W = Wz * Wn * Wl * Wm;
+			float W_Direct = Wz * Wn * Wm * Wl_Direct;
+			float W_Indirect = Wz * Wn * Wm * Wl_Indirect;
 			
-			sumC += h[pos] * W * color;
-			weightC += h[pos] * W;
+			sumClrDirect += h[pos] * W_Direct * colorDirect;
+			weightClrDirect += h[pos] * W_Direct;
 
-			sumV += (h[pos] * h[pos]) * (W * W) * variance;
-			weightV += h[pos] * W;
+			sumVarDirect += (h[pos] * h[pos]) * (W_Direct * W_Direct) * varDirect;
+			weightVarDirect += h[pos] * W_Direct;
+
+			sumClrIndirect += h[pos] * W_Indirect * colorIndirect;
+			weightClrIndirect += h[pos] * W_Indirect;
+
+			sumVarIndirect += (h[pos] * h[pos]) * (W_Indirect * W_Indirect) * varIndirect;
+			weightVarIndirect += h[pos] * W_Indirect;
 
 			pos++;
 		}
 	}
 
-	if (weightC > 0.0) {
-		sumC /= weightC;
+	if (weightClrDirect > 0.0) {
+		sumClrDirect /= weightClrDirect;
 	}
-	if (weightV > 0.0) {
-		sumV /= (weightV * weightV);
+	if (weightVarDirect > 0.0) {
+		sumVarDirect /= (weightVarDirect * weightVarDirect);
 	}
 
-	nextClrBuffer[idx] = sumC;
-	nextVarBuffer[idx] = sumV;
+	if (weightClrIndirect > 0.0) {
+		sumClrIndirect /= weightClrIndirect;
+	}
+	if (weightVarIndirect > 0.0) {
+		sumVarIndirect /= (weightVarIndirect * weightVarIndirect);
+	}
+
+	nextClrBuffer[idx].f[idaten::SVGFPathTracing::LightType::Direct] = sumClrDirect;
+	nextVarBuffer[idx].x = sumVarDirect;
+
+	nextClrBuffer[idx].f[idaten::SVGFPathTracing::LightType::Indirect] = sumClrIndirect;
+	nextVarBuffer[idx].y = sumVarIndirect;
 
 	if (isFirstIter) {
 		// Store color temporary.
-		tmpBuffer[idx] = sumC;
-	}
-	
-	if (isFinalIter) {
-		sumC *= aovs[idx].texclr;
-
-		surf2Dwrite(
-			sumC,
-			dst,
-			ix * sizeof(float4), iy,
-			cudaBoundaryModeTrap);
-	}
+		tmpBuffer[idx].f[idaten::SVGFPathTracing::LightType::Direct] = sumClrDirect;
+		tmpBuffer[idx].f[idaten::SVGFPathTracing::LightType::Indirect] = sumClrIndirect;
+	}	
 }
 
 __global__ void copyFromBufferToAov(
-	float4* src,
+	const idaten::SVGFPathTracing::Store* __restrict__ src,
 	idaten::SVGFPathTracing::AOV* aovs,
 	int width, int height)
 {
@@ -339,7 +347,35 @@ __global__ void copyFromBufferToAov(
 
 	const int idx = getIdx(ix, iy, width);
 
-	aovs[idx].color = src[idx];
+	aovs[idx].color[0] = src[idx].f[0];
+	aovs[idx].color[1] = src[idx].f[1];
+}
+
+__global__ void modulateTexColor(
+	cudaSurfaceObject_t dst,
+	const idaten::SVGFPathTracing::Store* __restrict__ buffer,
+	const idaten::SVGFPathTracing::AOV* __restrict__ aovs,
+	int width, int height)
+{
+	int ix = blockIdx.x * blockDim.x + threadIdx.x;
+	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (ix >= width && iy >= height) {
+		return;
+	}
+
+	const int idx = getIdx(ix, iy, width);
+
+	auto direct = buffer[idx].f[idaten::SVGFPathTracing::LightType::Direct];
+	auto indirect = buffer[idx].f[idaten::SVGFPathTracing::LightType::Indirect];
+
+	auto clr = (direct + indirect) * aovs[idx].texclr;
+
+	surf2Dwrite(
+		clr,
+		dst,
+		ix * sizeof(float4), iy,
+		cudaBoundaryModeTrap);
 }
 
 namespace idaten
@@ -407,6 +443,12 @@ namespace idaten
 			cur = next;
 			next = 1 - cur;
 		}
+
+		modulateTexColor << < grid, block >> > (
+			outputSurf,
+			m_atrousClr[cur].ptr(),
+			curaov.ptr(),
+			width, height);
 	}
 
 	void SVGFPathTracing::copyFromTmpBufferToAov(int width, int height)

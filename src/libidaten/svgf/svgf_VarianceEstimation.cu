@@ -49,7 +49,7 @@ __global__ void varianceEstimation(
 
 	if (centerMeshId < 0) {
 		// îwåiÇ»ÇÃÇ≈ÅAï™éUÇÕÉ[Éç.
-		aovs[idx].moments = make_float4(0, 0, 0, 1);
+		aovs[idx].moments[0] = aovs[idx].moments[1] = make_float4(0, 0, 0, 1);
 
 		surf2Dwrite(
 			make_float4(0),
@@ -58,14 +58,17 @@ __global__ void varianceEstimation(
 			cudaBoundaryModeTrap);
 	}
 
-	float4 centerMoment = aovs[idx].moments;
+	float4 centerMomentDirect = aovs[idx].moments[idaten::SVGFPathTracing::LightType::Direct];
+	float4 centerMomentIndirect = aovs[idx].moments[idaten::SVGFPathTracing::LightType::Indirect];
 
-	int frame = (int)centerMoment.w;
+	int frame = (int)centerMomentDirect.w;
 
-	centerMoment /= centerMoment.w;
+	centerMomentDirect /= centerMomentDirect.w;
+	centerMomentIndirect /= centerMomentIndirect.w;
 
 	// ï™éUÇåvéZ.
-	float var = centerMoment.x - centerMoment.y * centerMoment.y;
+	float varDirect = centerMomentDirect.x - centerMomentDirect.y * centerMomentDirect.y;
+	float varIndirect = centerMomentIndirect.x - centerMomentIndirect.y * centerMomentIndirect.y;
 
 	if (frame < 4) {
 		// êœéZÉtÉåÅ[ÉÄêîÇ™ÇSñ¢ñû or DisoccludedÇ≥ÇÍÇƒÇ¢ÇÈ.
@@ -78,7 +81,9 @@ __global__ void varianceEstimation(
 
 		auto centerNormal = aovs[idx].normal;
 
-		float4 sum = make_float4(0, 0, 0, 0);
+		float4 sumDirect = make_float4(0, 0, 0, 0);
+		float4 sumIndirect = make_float4(0, 0, 0, 0);
+
 		float weight = 0.0f;
 
 		for (int v = -radius; v <= radius; v++)
@@ -86,9 +91,6 @@ __global__ void varianceEstimation(
 			for (int u = -radius; u <= radius; u++)
 			{
 				auto sampleaov = sampleAov(aovs, ix + u, iy + v, width, height);
-				
-				auto moment = sampleaov->moments;
-				moment /= moment.w;
 
 				auto sampleNml = sampleaov->normal;
 
@@ -106,26 +108,39 @@ __global__ void varianceEstimation(
 				float Wm = centerMeshId == sampleMeshId ? 1.0f : 0.0f;
 
 				float W = Ws * Wn * Wd * Wm;
-				sum += moment * W;
+
+				auto momentDirect = sampleaov->moments[idaten::SVGFPathTracing::LightType::Direct];
+				momentDirect /= momentDirect.w;
+
+				auto momentIndirect = sampleaov->moments[idaten::SVGFPathTracing::LightType::Indirect];
+				momentIndirect /= momentIndirect.w;
+
+				sumDirect += momentDirect * W;
+				sumIndirect += momentIndirect * W;
+
 				weight += W;
 			}
 		}
 
 		if (weight > 0.0f) {
-			sum /= weight;
+			sumDirect /= weight;
+			sumIndirect /= weight;
 		}
 
-		var = sum.x - sum.y * sum.y;
+		varDirect = sumDirect.x - sumDirect.y * sumDirect.y;
+		varIndirect = sumIndirect.x - sumIndirect.y * sumIndirect.y;
 	}
 
 	// TODO
 	// ï™éUÇÕÉ}ÉCÉiÉXÇ…Ç»ÇÁÇ»Ç¢Ç™ÅEÅEÅEÅE
-	var = abs(var);
+	varDirect = abs(varDirect);
+	varIndirect = abs(varIndirect);
 
-	aovs[idx].var = var;
+	aovs[idx].var[idaten::SVGFPathTracing::LightType::Direct] = varDirect;
+	aovs[idx].var[idaten::SVGFPathTracing::LightType::Indirect] = varIndirect;
 
 	surf2Dwrite(
-		make_float4(var, var, var, var),
+		make_float4(varDirect, varIndirect, 0, 1),
 		dst,
 		ix * sizeof(float4), iy,
 		cudaBoundaryModeTrap);
