@@ -15,7 +15,6 @@
 #include "scenedefs.h"
 
 #define ENABLE_ENVMAP
-//#define ENABLE_NLM
 
 //#define TEST_FOR_GL_RENDER
 

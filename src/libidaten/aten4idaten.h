@@ -18,8 +18,6 @@
 #include "material/ggx.h"
 #include "material/beckman.h"
 #include "material/oren_nayar.h"
-#include "material/disney_brdf.h"
-#include "material/carpaint.h"
 
 #include "math/math.h"
 #include "math/vec3.h"

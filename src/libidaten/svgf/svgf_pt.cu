@@ -468,11 +468,9 @@ __global__ void shade(
 	if (rec.mtrlid >= 0) {
 		shMtrls[threadIdx.x] = ctxt.mtrls[rec.mtrlid];
 
-		if (shMtrls[threadIdx.x].type != aten::MaterialType::Layer) {
-			shMtrls[threadIdx.x].albedoMap = (int)(shMtrls[threadIdx.x].albedoMap >= 0 ? ctxt.textures[shMtrls[threadIdx.x].albedoMap] : -1);
-			shMtrls[threadIdx.x].normalMap = (int)(shMtrls[threadIdx.x].normalMap >= 0 ? ctxt.textures[shMtrls[threadIdx.x].normalMap] : -1);
-			shMtrls[threadIdx.x].roughnessMap = (int)(shMtrls[threadIdx.x].roughnessMap >= 0 ? ctxt.textures[shMtrls[threadIdx.x].roughnessMap] : -1);
-		}
+		shMtrls[threadIdx.x].albedoMap = (int)(shMtrls[threadIdx.x].albedoMap >= 0 ? ctxt.textures[shMtrls[threadIdx.x].albedoMap] : -1);
+		shMtrls[threadIdx.x].normalMap = (int)(shMtrls[threadIdx.x].normalMap >= 0 ? ctxt.textures[shMtrls[threadIdx.x].normalMap] : -1);
+		shMtrls[threadIdx.x].roughnessMap = (int)(shMtrls[threadIdx.x].roughnessMap >= 0 ? ctxt.textures[shMtrls[threadIdx.x].roughnessMap] : -1);
 	}
 	else {
 		shMtrls[threadIdx.x] = aten::MaterialParameter(aten::MaterialType::Lambert, MaterialAttributeLambert);
@@ -577,11 +575,6 @@ __global__ void shade(
 
 	// Apply normal map.
 	int normalMap = shMtrls[threadIdx.x].normalMap;
-	if (shMtrls[threadIdx.x].type == aten::MaterialType::Layer) {
-		// Å•\‘w‚Ì NormalMap ‚ð“K—p.
-		auto* topmtrl = &ctxt.mtrls[shMtrls[threadIdx.x].layer[0]];
-		normalMap = (int)(topmtrl->normalMap >= 0 ? ctxt.textures[topmtrl->normalMap] : -1);
-	}
 	AT_NAME::material::applyNormalMap(normalMap, orienting_normal, orienting_normal, rec.u, rec.v);
 
 	auto albedo = AT_NAME::sampleTexture(shMtrls[threadIdx.x].albedoMap, rec.u, rec.v, aten::vec3(1), bounce);
