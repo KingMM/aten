@@ -1,7 +1,6 @@
 #include "renderer/pathtracing.h"
 #include "misc/omputil.h"
 #include "misc/timer.h"
-#include "renderer/nonphotoreal.h"
 #include "sampler/xorshift.h"
 #include "sampler/halton.h"
 #include "sampler/sobolproxy.h"
@@ -9,8 +8,6 @@
 #include "sampler/cmj.h"
 
 #include "material/lambert.h"
-
-//#define Deterministic_Path_Termination
 
 //#define RELEASE_DEBUG
 
@@ -52,7 +49,6 @@ namespace aten
 		while (depth < maxDepth) {
 			path.rec = hitrecord();
 
-#if 1
 			bool willContinue = true;
 			Intersection isect;
 
@@ -71,18 +67,6 @@ namespace aten
 			if (!willContinue) {
 				break;
 			}
-#else
-			if (scene->hit(path.ray, AT_MATH_EPSILON, AT_MATH_INF, path.rec)) {
-				bool willContinue = shade(sampler, scene, cam, depth, path);
-				if (!willContinue) {
-					break;
-				}
-			}
-			else {
-				shadeMiss(scene, depth, path);
-				break;
-			}
-#endif
 
 			depth++;
 		}
@@ -106,53 +90,14 @@ namespace aten
 			? &voxelMtrl
 			: material::getMaterial(path.rec.mtrlid);
 
-#if 1
 		bool isBackfacing = dot(path.rec.normal, -path.ray.dir) < real(0);
 
 		// 交差位置の法線.
 		// 物体からのレイの入出を考慮.
 		vec3 orienting_normal = path.rec.normal;
-#else
-		vec3 orienting_normal = dot(path.rec.normal, path.ray.dir) < 0.0 ? path.rec.normal : -path.rec.normal;
-#endif
 
 		// Implicit conection to light.
 		if (mtrl->isEmissive()) {
-#if 0
-			if (depth == 0) {
-				// Ray hits the light directly.
-				path.contrib = mtrl->color();
-				path.isTerminate = true;
-				return false;
-			}
-			else if (path.prevMtrl && path.prevMtrl->isSingular()) {
-				auto emit = mtrl->color();
-				path.contrib += path.throughput * emit;
-				return false;
-			}
-			else {
-				auto cosLight = dot(orienting_normal, -path.ray.dir);
-				auto dist2 = squared_length(path.rec.p - path.ray.org);
-
-				if (cosLight >= 0) {
-					auto pdfLight = 1 / path.rec.area;
-
-					// Convert pdf area to sradian.
-					// http://www.slideshare.net/h013/edubpt-v100
-					// p31 - p35
-					pdfLight = pdfLight * dist2 / cosLight;
-
-					auto misW = path.pdfb / (pdfLight + path.pdfb);
-
-					auto emit = mtrl->color();
-
-					path.contrib += path.throughput * misW * emit;
-
-					// When ray hit the light, tracing will finish.
-					return false;
-				}
-			}
-#else
 			if (!isBackfacing) {
 				real weight = 1.0f;
 
@@ -177,7 +122,6 @@ namespace aten
 
 			path.isTerminate = true;
 			return false;
-#endif
 		}
 
 		if (!mtrl->isTranslucent() && isBackfacing) {
@@ -186,39 +130,6 @@ namespace aten
 
 		// Apply normal map.
 		mtrl->applyNormalMap(orienting_normal, orienting_normal, path.rec.u, path.rec.v);
-
-#if 0
-		if (depth == 0) {
-			auto Wdash = cam->getWdash(
-				path.rec.p,
-				camsample.posOnImageSensor,
-				camsample.posOnLens,
-				camsample.posOnObjectplane);
-			auto areaPdf = cam->getPdfImageSensorArea(
-				path.rec.p, orienting_normal,
-				camsample.posOnImageSensor,
-				camsample.posOnLens,
-				camsample.posOnObjectplane);
-
-			path.throughput *= Wdash;
-			path.throughput /= areaPdf;
-		}
-#endif
-
-		// Non-Photo-Real.
-		if (mtrl->isNPR()) {
-			path.contrib = shadeNPR(mtrl, path.rec.p, orienting_normal, path.rec.u, path.rec.v, scene, sampler);
-			path.isTerminate = true;
-			return false;
-		}
-
-		if (m_virtualLight) {
-			if (mtrl->isGlossy()
-				&& (path.prevMtrl && !path.prevMtrl->isGlossy()))
-			{
-				return false;
-			}
-		}
 		
 		// Explicit conection to light.
 		if (!mtrl->isSingular())
@@ -292,55 +203,8 @@ namespace aten
 					}
 				}
 			}
-
-#if 1
-			if (m_virtualLight)
-			{
-				auto sampleres = m_virtualLight->sample(path.rec.p, nullptr);
-
-				const vec3& posLight = sampleres.pos;
-				const vec3& nmlLight = sampleres.nml;
-				real pdfLight = sampleres.pdf;
-
-				auto lightobj = sampleres.obj;
-
-				vec3 dirToLight = normalize(sampleres.dir);
-				aten::ray shadowRay(path.rec.p, dirToLight);
-
-				hitrecord tmpRec;
-
-				if (scene->hitLight(m_virtualLight, posLight, shadowRay, AT_MATH_EPSILON, AT_MATH_INF, tmpRec)) {
-					auto cosShadow = dot(orienting_normal, dirToLight);
-					auto dist2 = squared_length(sampleres.dir);
-					auto dist = aten::sqrt(dist2);
-
-					auto bsdf = mtrl->bsdf(orienting_normal, path.ray.dir, dirToLight, path.rec.u, path.rec.v);
-					auto pdfb = mtrl->pdf(orienting_normal, path.ray.dir, dirToLight, path.rec.u, path.rec.v);
-
-					// Get light color.
-					auto emit = sampleres.finalColor;
-
-					auto c = dot(m_lightDir, -dirToLight);
-					real visible = (real)(c > real(0) ? 1 : 0);
-
-					auto misW = pdfLight / (pdfb + pdfLight);
-					path.contrib += visible * misW * bsdf * emit * cosShadow / pdfLight;
-				}
-
-				if (!mtrl->isGlossy()) {
-					return false;
-				}
-			}
-#endif
 		}
 
-#ifdef Deterministic_Path_Termination
-		real russianProb = real(1);
-
-		if (depth > 1) {
-			russianProb = real(0.5);
-		}
-#else
 		real russianProb = real(1);
 
 		if (depth > rrDepth) {
@@ -357,7 +221,6 @@ namespace aten
 				russianProb = p;
 			}
 		}
-#endif
 
 		auto sampling = mtrl->sample(path.ray, orienting_normal, path.rec.normal, sampler, path.rec.u, path.rec.v);
 
@@ -365,7 +228,6 @@ namespace aten
 		auto pdfb = sampling.pdf;
 		auto bsdf = sampling.bsdf;
 
-#if 1
 		real c = 1;
 		if (!mtrl->isSingular()) {
 			// TODO
@@ -373,9 +235,6 @@ namespace aten
 			//c = aten::abs(dot(orienting_normal, nextDir));
 			c = dot(orienting_normal, nextDir);
 		}
-#else
-		auto c = dot(orienting_normal, nextDir);
-#endif
 
 		//if (pdfb > 0) {
 		if (pdfb > 0 && c > 0) {
@@ -442,16 +301,6 @@ namespace aten
 			m_rrDepth = m_maxDepth - 1;
 		}
 
-#ifdef Deterministic_Path_Termination
-		// For DeterministicPathTermination.
-		std::vector<uint32_t> depths;
-		for (uint32_t s = 0; s < samples; s++) {
-			auto maxdepth = (aten::clz((samples - 1) - s) - aten::clz(samples)) + 1;
-			maxdepth = std::min<int>(maxdepth, m_maxDepth);
-			depths.push_back(maxdepth);
-		}
-#endif
-
 		auto time = timer::getSystemTime();
 
 #if defined(ENABLE_OMP) && !defined(RELEASE_DEBUG)
@@ -496,24 +345,12 @@ namespace aten
 
 						auto ray = camsample.r;
 
-#ifdef Deterministic_Path_Termination
-						auto maxDepth = depths[i];
-						auto path = radiance(
-							&sampler,
-							maxDepth,
-							ray,
-							camera,
-							camsample,
-							scene);
-#else
-
 						auto path = radiance(
 							&rnd,
 							ray, 
 							camera,
 							camsample,
 							scene);
-#endif
 
 						if (isInvalidColor(path.contrib)) {
 							AT_PRINTF("Invalid(%d/%d[%d])\n", x, y, i);

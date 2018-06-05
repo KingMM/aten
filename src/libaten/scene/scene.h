@@ -31,13 +31,6 @@ namespace AT_NAME {
 			aten::Intersection& isect,
 			bool enableLod = false) const = 0;
 
-		virtual bool hit(
-			const aten::accelerator::ResultIntersectTestByFrustum& resF,
-			const aten::ray& r,
-			real t_min, real t_max,
-			aten::hitrecord& rec,
-			aten::Intersection& isect) const = 0;
-
 		void addLight(Light* l)
 		{
 			m_lights.push_back(l);
@@ -228,27 +221,6 @@ namespace AT_NAME {
 #endif
 
 			return isHit;
-		}
-
-		virtual bool hit(
-			const aten::accelerator::ResultIntersectTestByFrustum& resF,
-			const aten::ray& r,
-			real t_min, real t_max,
-			aten::hitrecord& rec,
-			aten::Intersection& isect) const override final
-		{
-			auto isHit = m_accel.hitMultiLevel(resF, r, t_min, t_max, isect);
-
-			// TODO
-#ifndef __AT_CUDA__
-			if (isHit) {
-				auto obj = transformable::getShape(isect.objid);
-				aten::hitable::evalHitResult(obj, r, rec, isect);
-			}
-#endif
-
-			return isHit;
-
 		}
 
 		ACCEL* getAccel()

@@ -87,56 +87,6 @@ public:
 
 };
 
-class TexturesScene {
-public:
-	static void makeScene(aten::scene* scene);
-
-	static void getCameraPosAndAt(
-		aten::vec3& pos,
-		aten::vec3& at,
-		real& fov);
-};
-
-class HideLightScene {
-public:
-	static void makeScene(aten::scene* scene);
-
-	static void getCameraPosAndAt(
-		aten::vec3& pos,
-		aten::vec3& at,
-		real& fov);
-};
-
-class DisneyMaterialTestScene {
-public:
-	static void makeScene(aten::scene* scene);
-
-	static void getCameraPosAndAt(
-		aten::vec3& pos,
-		aten::vec3& at,
-		real& fov);
-};
-
-class LayeredMaterialTestScene {
-public:
-	static void makeScene(aten::scene* scene);
-
-	static void getCameraPosAndAt(
-		aten::vec3& pos,
-		aten::vec3& at,
-		real& fov);
-};
-
-class ToonShadeTestScene {
-public:
-	static void makeScene(aten::scene* scene);
-
-	static void getCameraPosAndAt(
-		aten::vec3& pos,
-		aten::vec3& at,
-		real& fov);
-};
-
 class ObjCornellBoxScene {
 public:
 	static void makeScene(aten::scene* scene);
@@ -165,10 +115,5 @@ public:
 //#define Scene DirectionalLightScene
 //#define Scene SpotLightScene
 //#define Scene ManyLightScene
-//#define Scene TexturesScene
-//#define Scene HideLightScene
-//#define Scene DisneyMaterialTestScene
-//#define Scene LayeredMaterialTestScene
-//#define Scene ToonShadeTestScene
 //#define Scene ObjCornellBoxScene
 #define Scene SponzaScene

@@ -16,10 +16,6 @@ namespace AT_NAME
 		"blinn",
 		"beckman",
 		"ggx",
-		"disney_brdf",
-		"carpaint",
-		"toon",
-		"layer",
 	};
 	AT_STATICASSERT(AT_COUNTOF(mtrlTypeNames) == (int)aten::MaterialType::MaterialTypeMax);
 
@@ -170,24 +166,6 @@ namespace AT_NAME
 	material::~material()
 	{
 		deleteMaterial(this);
-	}
-
-	NPRMaterial::NPRMaterial(
-		aten::MaterialType type,
-		const aten::vec3& e, AT_NAME::Light* light)
-		: material(type, MaterialAttributeNPR, e)
-	{
-		setTargetLight(light);
-	}
-
-	void NPRMaterial::setTargetLight(AT_NAME::Light* light)
-	{
-		m_targetLight = light;
-	}
-
-	const AT_NAME::Light* NPRMaterial::getTargetLight() const
-	{
-		return m_targetLight;
 	}
 
 	// NOTE

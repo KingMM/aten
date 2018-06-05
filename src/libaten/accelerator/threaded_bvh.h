@@ -66,14 +66,6 @@ namespace aten
 			return hit(r, t_min, t_max, isect);
 		}
 
-		virtual bool hitMultiLevel(
-			const accelerator::ResultIntersectTestByFrustum& fisect,
-			const ray& r,
-			real t_min, real t_max,
-			Intersection& isect) const override final;
-
-		virtual accelerator::ResultIntersectTestByFrustum intersectTestByFrustum(const frustum& f) override final;
-
 		virtual void drawAABB(
 			aten::hitable::FuncDrawAABB func,
 			const aten::mat4& mtxL2W) override final
@@ -142,15 +134,6 @@ namespace aten
 
 		bool hit(
 			int exid,
-			const std::vector<std::vector<ThreadedBvhNode>>& listThreadedBvhNode,
-			const ray& r,
-			real t_min, real t_max,
-			Intersection& isect) const;
-
-		bool hitMultiLevel(
-			int exid,
-			int nodeid,
-			int topid,
 			const std::vector<std::vector<ThreadedBvhNode>>& listThreadedBvhNode,
 			const ray& r,
 			real t_min, real t_max,

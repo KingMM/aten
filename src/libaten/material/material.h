@@ -23,30 +23,27 @@ namespace aten
 			uint32_t isSingular : 1;
 			uint32_t isTranslucent : 1;
 			uint32_t isGlossy : 1;
-			uint32_t isNPR : 1;
 		};
 
 		AT_DEVICE_API MaterialAttribute(
 			bool _isEmissive = false,
 			bool _isSingular = false,
 			bool _isTranslucent = false,
-			bool _isGlossy = false,
-			bool _isNPR = false)
+			bool _isGlossy = false)
 			: isEmissive(_isEmissive), isSingular(_isSingular), isTranslucent(_isTranslucent),
-			isGlossy(_isGlossy), isNPR(_isNPR)
+			isGlossy(_isGlossy)
 		{}
 		AT_DEVICE_API MaterialAttribute(const MaterialAttribute& type)
-			: MaterialAttribute(type.isEmissive, type.isSingular, type.isTranslucent, type.isGlossy, type.isNPR)
+			: MaterialAttribute(type.isEmissive, type.isSingular, type.isTranslucent, type.isGlossy)
 		{}
 	};
 
-	//													          Em     Sp      Tr    Gl    NPR
-	#define MaterialAttributeMicrofacet	aten::MaterialAttribute(false, false, false, true,  false)
-	#define MaterialAttributeLambert	aten::MaterialAttribute(false, false, false, false, false)
-	#define MaterialAttributeEmissive	aten::MaterialAttribute(true,  false, false, false, false)
-	#define MaterialAttributeSpecular	aten::MaterialAttribute(false, true,  false, true,  false)
-	#define MaterialAttributeRefraction	aten::MaterialAttribute(false, true,  true,  true,  false)
-	#define MaterialAttributeNPR		aten::MaterialAttribute(false, false, false, false, true)
+	//													          Em     Sp      Tr    Gl 
+	#define MaterialAttributeMicrofacet	aten::MaterialAttribute(false, false, false, true)
+	#define MaterialAttributeLambert	aten::MaterialAttribute(false, false, false, false)
+	#define MaterialAttributeEmissive	aten::MaterialAttribute(true,  false, false, false)
+	#define MaterialAttributeSpecular	aten::MaterialAttribute(false, true,  false, true)
+	#define MaterialAttributeRefraction	aten::MaterialAttribute(false, true,  true,  true)
 
 	enum MaterialType : int {
 		Emissive,
@@ -57,10 +54,6 @@ namespace aten
 		Blinn,
 		GGX,
 		Beckman,
-		Disney,
-		CarPaint,
-		Toon,
-		Layer,
 
 		MaterialTypeMax,
 	};
@@ -79,49 +72,8 @@ namespace aten
 		//   ex) eta = 1.0 / 1.4  : air/glass's index of refraction.
 		real ior{ 1.0 };				// 屈折率.
 
-#if 0
 		real roughness{ 0.5 };			// 表面の粗さで，ディフューズとスペキュラーレスポンスの両方を制御します.
 		real shininess{ 1.0 };
-
-		real subsurface{ 0.0 };			// 表面下の近似を用いてディフューズ形状を制御する.
-		real metallic{ 0.0 };			// 金属度(0 = 誘電体, 1 = 金属)。これは2つの異なるモデルの線形ブレンドです。金属モデルはディフューズコンポーネントを持たず，また色合い付けされた入射スペキュラーを持ち，基本色に等しくなります.
-		real specular{ 0.5 };			// 入射鏡面反射量。これは明示的な屈折率の代わりにあります.
-		real specularTint{ 0.0 };		// 入射スペキュラーを基本色に向かう色合いをアーティスティックな制御するための譲歩。グレージングスペキュラーはアクロマティックのままです.
-		real anisotropic{ 0.0 };		// 異方性の度合い。これはスペキュラーハイライトのアスペクト比を制御します(0 = 等方性, 1 = 最大異方性).
-		real sheen{ 0.0 };				// 追加的なグレージングコンポーネント，主に布に対して意図している.
-		real sheenTint{ 0.5 };			// 基本色に向かう光沢色合いの量.
-		real clearcoat{ 0.0 };			// 第二の特別な目的のスペキュラーローブ.
-		real clearcoatGloss{ 1.0 };		// クリアコートの光沢度を制御する(0 = “サテン”風, 1 = “グロス”風).
-#else
-		union {
-			struct {
-				real roughness;			// 表面の粗さで，ディフューズとスペキュラーレスポンスの両方を制御します.
-				real shininess;
-				real subsurface;		// 表面下の近似を用いてディフューズ形状を制御する.
-				real metallic;			// 金属度(0 = 誘電体, 1 = 金属)。これは2つの異なるモデルの線形ブレンドです。金属モデルはディフューズコンポーネントを持たず，また色合い付けされた入射スペキュラーを持ち，基本色に等しくなります.
-				real specular;			// 入射鏡面反射量。これは明示的な屈折率の代わりにあります.
-				real specularTint;		// 入射スペキュラーを基本色に向かう色合いをアーティスティックな制御するための譲歩。グレージングスペキュラーはアクロマティックのままです.
-				real anisotropic;		// 異方性の度合い。これはスペキュラーハイライトのアスペクト比を制御します(0 = 等方性, 1 = 最大異方性).
-				real sheen;				// 追加的なグレージングコンポーネント，主に布に対して意図している.
-				real sheenTint;			// 基本色に向かう光沢色合いの量.
-				real clearcoat;			// 第二の特別な目的のスペキュラーローブ.
-				real clearcoatGloss;	// クリアコートの光沢度を制御する(0 = “サテン”風, 1 = “グロス”風).
-			};
-			struct {
-				real clearcoatRoughness;
-				real flakeLayerRoughness;
-				real flake_scale;				// Smaller values zoom into the flake map, larger values zoom out.
-				real flake_size;				// Relative size of the flakes
-				real flake_size_variance;		// 0.0 makes all flakes the same size, 1.0 assigns random size between 0 and the given flake size
-				real flake_normal_orientation;	// Blend between the flake normals (0.0) and the surface normal (1.0)
-				real flake_reflection;
-				real flake_transmittance;
-				aten::vec3 glitterColor;
-				aten::vec3 flakeColor;
-				real flake_intensity;
-			} carpaint;
-		};
-#endif
 
 		MaterialAttribute attrib;
 
@@ -129,14 +81,9 @@ namespace aten
 			uint32_t isIdealRefraction : 1;
 		};
 
-		union {
-			struct {
-				int albedoMap;
-				int normalMap;
-				int roughnessMap;
-			};
-			int layer[3];
-		};
+		int albedoMap;
+		int normalMap;
+		int roughnessMap;
 
 		AT_DEVICE_API MaterialParameter()
 		{
@@ -147,16 +94,6 @@ namespace aten
 
 			roughness = real(0.5);
 			shininess = real(1.0);
-
-			subsurface = real(0.0);
-			metallic = real(0.0);
-			specular = real(0.5);
-			specularTint = real(0.0);
-			anisotropic = real(0.0);
-			sheen = real(0.0);
-			sheenTint = real(0.5);
-			clearcoat = real(0.0);
-			clearcoatGloss = real(1.0);
 		}
 		AT_DEVICE_API MaterialParameter(MaterialType _type, const MaterialAttribute& _attrib)
 			: type(_type), attrib(_attrib)
@@ -168,16 +105,6 @@ namespace aten
 
 			roughness = real(0.5);
 			shininess = real(1.0);
-
-			subsurface = real(0.0);
-			metallic = real(0.0);
-			specular = real(0.5);
-			specularTint = real(0.0);
-			anisotropic = real(0.0);
-			sheen = real(0.0);
-			sheenTint = real(0.5);
-			clearcoat = real(0.0);
-			clearcoatGloss = real(1.0);
 		}
 	};
 
@@ -299,11 +226,6 @@ namespace AT_NAME
 			}
 
 			return isGlossy;
-		}
-
-		bool isNPR() const
-		{
-			return m_param.attrib.isNPR;
 		}
 
 		const aten::vec3& color() const
@@ -447,15 +369,6 @@ namespace AT_NAME
 			m_param.ior = param.ior;
 			m_param.shininess = param.shininess;
 			m_param.roughness = param.roughness;			
-			m_param.subsurface = param.subsurface;
-			m_param.metallic = param.metallic;
-			m_param.specular = param.specular;
-			m_param.specularTint = param.specularTint;
-			m_param.anisotropic = param.anisotropic;
-			m_param.sheen = param.sheen;
-			m_param.sheenTint = param.sheenTint;
-			m_param.clearcoat = param.clearcoat;
-			m_param.clearcoatGloss = param.clearcoatGloss;
 
 			m_param.albedoMap = param.albedoMap;
 			m_param.normalMap = param.normalMap;
@@ -520,41 +433,6 @@ namespace AT_NAME
 		// For debug.
 		std::string m_name;
 	};
-
-	class NPRMaterial : public material {
-	protected:
-		NPRMaterial(
-			aten::MaterialType type,
-			const aten::vec3& e, AT_NAME::Light* light);
-
-		NPRMaterial(aten::MaterialType type, aten::Values& val)
-			: material(type, MaterialAttributeNPR, val)
-		{}
-
-		virtual ~NPRMaterial() {}
-
-	public:
-		virtual AT_DEVICE_MTRL_API real computeFresnel(
-			const aten::vec3& normal,
-			const aten::vec3& wi,
-			const aten::vec3& wo,
-			real outsideIor = 1) const override final
-		{
-			return real(1);
-		}
-
-		void setTargetLight(AT_NAME::Light* light);
-
-		const AT_NAME::Light* getTargetLight() const;
-
-		virtual aten::vec3 bsdf(
-			real cosShadow,
-			real u, real v) const = 0;
-
-	private:
-		AT_NAME::Light* m_targetLight{ nullptr };
-	};
-
 
 	real schlick(
 		const aten::vec3& in,

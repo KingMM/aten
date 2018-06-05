@@ -467,29 +467,6 @@ namespace aten
 				width, height);
 			cam = pinhole;
 		}
-		else if (type == "thinlens") {
-			auto thinlens = new ThinLensCamera();
-			thinlens->init(
-				width, height,
-				val.get("org", vec3(0)),
-				val.get("at", vec3(0, 0, -1)),
-				val.get("up", vec3(0, 1, 0)),
-				val.get("sensorsize", real(30.0)),
-				val.get("dist_sensor_lens", real(40.0)),
-				val.get("dist_lens_focus", real(130.0)),
-				val.get("lens_r", real(1.0)),
-				val.get("w_scale", real(1.0)));
-			cam = thinlens;
-		}
-		else if (type == "equirect") {
-			auto equirect = new EquirectCamera();
-			equirect->init(
-				val.get("org", vec3(0)),
-				val.get("at", vec3(0, 0, -1)),
-				val.get("up", vec3(0, 1, 0)),
-				width, height);
-			cam = equirect;
-		}
 
 		return cam;
 	}

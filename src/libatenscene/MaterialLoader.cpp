@@ -447,10 +447,6 @@ namespace aten {
 		[](Values& values) { return new MicrofacetBlinn(values); },		// blinn
 		[](Values& values) { return new MicrofacetBeckman(values); },	// beckman
 		[](Values& values) { return new MicrofacetGGX(values); },		// ggx
-		[](Values& values) { return new DisneyBRDF(values); },			// disney_brdf
-		[](Values& values) { return new CarPaintBRDF(values); },		// carpaint
-		[](Values& values) { return new toon(values); },				// toon
-		[](Values& values) { return nullptr; },							// layer
 	};
 	AT_STATICASSERT(AT_COUNTOF(g_funcs) == (int)aten::MaterialType::MaterialTypeMax);
 

@@ -225,8 +225,6 @@ namespace aten {
 			return m_root;
 		}
 
-		virtual accelerator::ResultIntersectTestByFrustum intersectTestByFrustum(const frustum& f) override final;
-
 		static bvhnode* getNestedNode(bvhnode* node, aten::mat4* mtxL2W = nullptr);
 
 		template <typename _T>
@@ -347,27 +345,6 @@ namespace aten {
 			uint32_t num,
 			int depth = 0,
 			bvhnode* parent = nullptr);
-
-		struct Candidate {
-			bvhnode* node{ nullptr };
-			bvhnode* instanceNode{ nullptr };
-
-			Candidate(bvhnode* n, bvhnode* i = nullptr)
-			{
-				node = n;
-				instanceNode = i;
-			}
-		};
-
-		bool findCandidates(
-			bvhnode* node,
-			bvhnode* instanceNode,
-			const frustum& f,
-			std::stack<Candidate>* stack);
-
-		bvhnode* traverse(
-			bvhnode* root,
-			const frustum& f);
 
 	protected:
 		bvhnode* m_root{ nullptr };
