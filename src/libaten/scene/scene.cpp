@@ -19,8 +19,8 @@ namespace aten {
 
         const auto& param = light->param();
 
-        auto lightobj = transformable::getShape(param.objid);
-        auto hitobj = transformable::getShape(isect.objid);
+        auto lightobj = param.objid >= 0 ? ctxt.getTransformable(param.objid) : nullptr;
+        auto hitobj = isect.objid >= 0 ? ctxt.getTransformable(isect.objid) : nullptr;
 
         isHit = scene::hitLight(
             isHit,

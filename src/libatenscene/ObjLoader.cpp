@@ -111,7 +111,7 @@ namespace aten
             return;
         }
 
-        obj = new object();
+        obj = aten::TransformableFactory::createObject(ctxt);
 
         vec3 shapemin = vec3(AT_MATH_INF);
         vec3 shapemax = vec3(-AT_MATH_INF);
@@ -199,10 +199,10 @@ namespace aten
                             obj->setBoundingBox(aten::aabb(pmin, pmax));
                             objs.push_back(obj);
 
-                            obj = new object();
+                            obj = aten::TransformableFactory::createObject(ctxt);
                         }
                         if (mtrl->param().type == aten::MaterialType::Emissive) {
-                            auto emitobj = new object();
+                            auto emitobj = aten::TransformableFactory::createObject(ctxt);
                             emitobj->appendShape(dstshape);
                             emitobj->setBoundingBox(aten::aabb(pmin, pmax));
                             objs.push_back(emitobj);
@@ -237,7 +237,7 @@ namespace aten
 
                             if (!albedoMap) {
                                 std::string texname = pathname + "/" + objmtrl.diffuse_texname;
-                                albedoMap = aten::ImageLoader::load(texname);
+                                albedoMap = aten::ImageLoader::load(texname, ctxt);
                             }
                         }
 
@@ -247,15 +247,14 @@ namespace aten
 
                             if (!normalMap) {
                                 std::string texname = pathname + "/" + objmtrl.bump_texname;
-                                normalMap = aten::ImageLoader::load(texname);
+                                normalMap = aten::ImageLoader::load(texname, ctxt);
                             }
                         }
 
                         aten::MaterialParameter mtrlParam;
                         mtrlParam.baseColor = diffuse;
                         
-                        aten::material* mtrl = aten::MaterialFactory::createMaterialWithMaterialParameterAndAddToCtxt(
-                            ctxt,
+                        aten::material* mtrl = ctxt.createMaterialWithMaterialParameter(
                             aten::MaterialType::Lambert,
                             mtrlParam,
                             albedoMap, 
@@ -290,7 +289,7 @@ namespace aten
                 faceParam.mtrlid = dstshape->getMaterial()->id();
                 faceParam.gemoid = dstshape->getGeomId();
 
-                auto f = face::create(faceParam, ctxt);
+                auto f = ctxt.createTriangle(faceParam);
 
                 dstshape->addFace(f);
             }
@@ -307,14 +306,14 @@ namespace aten
                     objs.push_back(obj);
 
                     if (p + 1 < shapes.size()) {
-                        obj = new object();
+                        obj = aten::TransformableFactory::createObject(ctxt);
                     }
                     else {
                         obj = nullptr;
                     }
                 }
                 else if (mtrl->param().type == aten::MaterialType::Emissive) {
-                    auto emitobj = new object();
+                    auto emitobj = aten::TransformableFactory::createObject(ctxt);
                     emitobj->appendShape(dstshape);
                     emitobj->setBoundingBox(aten::aabb(pmin, pmax));
                     objs.push_back(emitobj);

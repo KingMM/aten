@@ -10,12 +10,12 @@
 namespace AT_NAME
 {
     class sphere : public aten::geom<aten::transformable> {
-    public:
-        sphere(const aten::vec3& center, real radius, material* mtrl);
-        sphere(real radius, material* mtrl)
-            : sphere(aten::vec3(), radius, mtrl)
-        {}
+        friend class TransformableFactory;
 
+    private:
+        sphere(const aten::vec3& center, real radius, material* mtrl);
+
+    public:
         virtual ~sphere() {}
 
     public:
@@ -69,11 +69,6 @@ namespace AT_NAME
             aten::hitable::SamplePosNormalPdfResult* result,
             const aten::GeomParameter* param,
             aten::sampler* sampler);
-
-        virtual const aten::GeomParameter& getParam() const override final
-        {
-            return m_param;
-        }
 
         virtual void evalHitResult(
             const aten::context& ctxt,

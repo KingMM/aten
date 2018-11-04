@@ -53,7 +53,7 @@ namespace aten
     //        </postprocs>
     // </scene>
 
-    void readTextures(const tinyxml2::XMLElement* root)
+    void readTextures(const tinyxml2::XMLElement* root, aten::context& ctxt)
     {
         auto texRoot = root->FirstChildElement("textures");
 
@@ -77,10 +77,10 @@ namespace aten
             }
 
             if (!tag.empty()) {
-                ImageLoader::load(tag, path);
+                ImageLoader::load(tag, path, ctxt);
             }
             else {
-                ImageLoader::load(path);
+                ImageLoader::load(path, ctxt);
             }
         }
     }
@@ -296,12 +296,13 @@ namespace aten
             auto mtxL2W = mtxT * mtxRotX * mtxRotY * mtxRotZ * mtxS;
 
             if (obj) {
-                auto instance = new aten::instance<aten::object>(obj, ctxt, mtxL2W);
+                auto instance = aten::TransformableFactory::createInstance<aten::object>(ctxt, obj, mtxL2W);
                 objs.insert(std::pair<std::string, transformable*>(tag, instance));
             }
             else {
                 if (type == "cube") {
-                    auto cube = new aten::cube(
+                    auto cube = aten::TransformableFactory::createCube(
+                        ctxt,
                         val.get("center", vec3(0)),
                         val.get("width", real(1)),
                         val.get("height", real(1)),
@@ -310,7 +311,8 @@ namespace aten
                     objs.insert(std::pair<std::string, transformable*>(tag, cube));
                 }
                 else if (type == "sphere") {
-                    auto sphere = new aten::sphere(
+                    auto sphere = aten::TransformableFactory::createSphere(
+                        ctxt,
                         val.get("center", vec3(0)),
                         val.get("radius", real(1)),
                         mtrl);
@@ -588,7 +590,7 @@ namespace aten
             
             ret.camera = readCamera(root, ret.dst.width, ret.dst.height);
 
-            readTextures(root);
+            readTextures(root, ctxt);
             readMaterials(root, ctxt);
             readObjects(root, ctxt, objs);
             readLights(root, objs, lights);

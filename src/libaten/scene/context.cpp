@@ -1,8 +1,12 @@
 #include "scene/context.h"
 #include "geometry/face.h"
+#include "material/material_factory.h"
+#include "geometry/transformable.h"
 
 namespace aten
 {
+    const context* context::s_pinnedCtxt = nullptr;
+
     void context::build()
     {
         if (!m_vertices.empty()
@@ -14,6 +18,54 @@ namespace aten
                 0,
                 &m_vertices[0]);
         }
+    }
+
+    AT_NAME::material* context::createMaterial(
+        aten::MaterialType type,
+        aten::Values& value)
+    {
+        auto mtrl = MaterialFactory::createMaterial(type, value);
+        AT_ASSERT(mtrl);
+
+        if (mtrl) {
+            addMaterial(mtrl);
+        }
+
+        return mtrl;
+    }
+
+    AT_NAME::material* context::createMaterialWithDefaultValue(aten::MaterialType type)
+    {
+        auto mtrl = MaterialFactory::createMaterialWithDefaultValue(type);
+        AT_ASSERT(mtrl);
+
+        if (mtrl) {
+            addMaterial(mtrl);
+        }
+
+        return mtrl;
+    }
+
+    AT_NAME::material* context::createMaterialWithMaterialParameter(
+        aten::MaterialType type, 
+        const aten::MaterialParameter& param,
+        aten::texture* albedoMap, 
+        aten::texture* normalMap, 
+        aten::texture* roughnessMap)
+    {
+        auto mtrl = MaterialFactory::createMaterialWithMaterialParameter(
+            type,
+            param,
+            albedoMap,
+            normalMap,
+            roughnessMap);
+        AT_ASSERT(mtrl);
+
+        if (mtrl) {
+            addMaterial(mtrl);
+        }
+
+        return mtrl;
     }
 
     void context::addMaterial(aten::material* mtrl)
@@ -68,6 +120,18 @@ namespace aten
         return -1;
     }
 
+    AT_NAME::face* context::createTriangle(const aten::PrimitiveParamter& param)
+    {
+        auto f = AT_NAME::face::create(*this, param);
+        AT_ASSERT(f);
+        
+        if (f) {
+            addTriangle(f);
+        }
+
+        return f;
+    }
+
     void context::addTriangle(AT_NAME::face* tri)
     {
         tri->addToDataList(m_triangles);
@@ -113,5 +177,141 @@ namespace aten
         }
 
         return id;
+    }
+
+    void context::addTransformable(aten::transformable* t)
+    {
+        t->addToDataList(m_transformables);
+    }
+
+    int context::getTransformableNum() const
+    {
+        return m_transformables.size();
+    }
+
+    const aten::transformable * context::getTransformable(int idx) const
+    {
+        AT_ASSERT(0 <= idx && idx < getTransformableNum());
+        return m_transformables[idx];
+    }
+
+    void context::traverseTransformables(std::function<void(aten::transformable*, aten::GeometryType)> func) const
+    {
+        auto& shapes = m_transformables.getList();
+
+        for (auto s : shapes) {
+            auto t = s->getData();
+
+            auto type = t->getType();
+
+            func(t, type);
+        }
+    }
+
+    void context::copyMatricesAndUpdateTransformableMatrixIdx(std::vector<aten::mat4>& dst) const
+    {
+        traverseTransformables([&](aten::transformable* t, aten::GeometryType type) {
+            if (type == GeometryType::Instance) {
+                aten::mat4 mtxL2W, mtxW2L;
+                t->getMatrices(mtxL2W, mtxW2L);
+
+                if (!mtxL2W.isIdentity()) {
+                    auto& param = t->getParam();
+                    param.mtxid = (int)(dst.size() / 2);
+
+                    dst.push_back(mtxL2W);
+                    dst.push_back(mtxW2L);
+                }
+            }
+        });
+    }
+
+    int context::findTransformableIdxFromPointer(const void* p) const
+    {
+        auto& shapes = m_transformables.getList();
+
+        auto found = std::find_if(
+            shapes.begin(), shapes.end(),
+            [&](const aten::DataList<aten::transformable>::ListItem* item) {
+            const auto t = item->getData();
+            return t == p;
+        });
+
+        int id = -1;
+
+        if (found != shapes.end()) {
+            const auto t = (*found)->getData();
+            id = t->id();
+        }
+
+        return id;
+    }
+
+    int context::findPolygonalTransformableOrderFromPointer(const void* p) const
+    {
+        auto& shapes = m_transformables.getList();
+
+        int order = -1;
+
+        for (const auto item : shapes) {
+            const auto t = item->getData();
+
+            auto type = t->getType();
+            if (type == aten::GeometryType::Polygon) {
+                order++;
+            }
+
+            if (t == p) {
+                break;
+            }
+        }
+
+        AT_ASSERT(order >= 0);
+
+        return order;
+    }
+    
+    texture* context::createTexture(uint32_t width, uint32_t height, uint32_t channels, const char* name)
+    {
+        auto ret = texture::create(width, height, channels, name);
+        AT_ASSERT(ret);
+
+        addTexture(ret);
+
+        return ret;
+    }
+
+    int context::getTextureNum() const
+    {
+        return m_textures.size();;
+    }
+
+    const texture* context::getTexture(int idx) const
+    {
+        AT_ASSERT(0 <= idx && idx < getTextureNum());
+        return m_textures[idx];
+    }
+
+    texture* context::getTexture(int idx)
+    {
+        AT_ASSERT(0 <= idx && idx < getTextureNum());
+        return m_textures[idx];
+    }
+
+    void context::addTexture(texture* tex)
+    {
+        AT_ASSERT(tex);
+
+        tex->addToDataList(m_textures);
+    }
+
+    void context::initAllTexAsGLTexture()
+    {
+        auto num = getTextureNum();
+
+        for (int i = 0; i < num; i++) {
+            auto tex = m_textures[i];
+            tex->initAsGLTexture();
+        }
     }
 }

@@ -38,11 +38,16 @@ namespace aten
         virtual ~Renderer() {}
 
     public:
-        virtual void render(
+        void render(
             const context& ctxt,
             Destination& dst,
             scene* scene,
-            camera* camera) = 0;
+            camera* camera)
+        {
+            context::pinContext(&ctxt);
+            onRender(ctxt, dst, scene, camera);
+            context::removePinnedContext();
+        }
 
         void setBG(background* bg)
         {
@@ -50,6 +55,12 @@ namespace aten
         }
 
     protected:
+        virtual void onRender(
+            const context& ctxt,
+            Destination& dst,
+            scene* scene,
+            camera* camera) = 0;
+
         virtual vec3 sampleBG(const ray& inRay) const
         {
             if (m_bg) {

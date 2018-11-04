@@ -5,18 +5,23 @@
 #include "types.h"
 #include "math/vec3.h"
 #include "math/vec4.h"
+#include "misc/datalist.h"
+#include "visualizer/shader.h"
 
-namespace aten {
-    class shader;
-
+namespace aten
+{
     class texture {
-        static std::vector<texture*> g_textures;
+        friend class context;
+
+    private:
+        texture();
+        texture(uint32_t width, uint32_t height, uint32_t channels, const char* name);
 
     public:
-        texture();
-        texture(uint32_t width, uint32_t height, uint32_t channels, const char* name = nullptr);
-
         ~texture();
+        
+    private:
+        static texture* create(uint32_t width, uint32_t height, uint32_t channels, const char* name);
 
     public:
         void init(uint32_t width, uint32_t height, uint32_t channels);
@@ -93,16 +98,11 @@ namespace aten {
             return m_name.c_str();
         }
 
-        static const texture* getTexture(int id);
-        static const std::vector<texture*>& getTextures();
-
         bool initAsGLTexture();
         bool initAsGLTexture(int width, int height);
         void bindAsGLTexture(uint8_t stage, shader* shd) const;
         void releaseAsGLTexture();
         void clearAsGLTexture(const aten::vec4& clearColor);
-
-        static void initAllAsGLTexture();
 
         void getDataAsGLTexture(
             int& width,
@@ -124,6 +124,15 @@ namespace aten {
         bool exportAsPNG(const std::string& filename);
 
     private:
+        static void resetIdWhenAnyTextureLeave(aten::texture* tex);
+
+        void addToDataList(aten::DataList<aten::texture>& list)
+        {
+            list.add(&m_listItem);
+            m_id = m_listItem.currentIndex();
+        }
+
+    private:
         int m_id{ -1 };
 
         uint32_t m_width{ 0 };
@@ -137,5 +146,7 @@ namespace aten {
         uint32_t m_gltex{ 0 };
 
         std::string m_name;
+
+        DataList<texture>::ListItem m_listItem;
     };
 }

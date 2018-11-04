@@ -85,8 +85,7 @@ void makeScene(aten::scene* scene)
         mtrlParam.carpaint.flake_intensity = real(1);
     }
 
-    auto mtrl = aten::MaterialFactory::createMaterialWithMaterialParameterAndAddToCtxt(
-        g_ctxt,
+    auto mtrl = g_ctxt.createMaterialWithMaterialParameter(
         aten::MaterialType::CarPaint,
         mtrlParam,
         nullptr, nullptr, nullptr);
@@ -94,7 +93,7 @@ void makeScene(aten::scene* scene)
     aten::AssetManager::registerMtrl("m1", mtrl);
 
     auto obj = aten::ObjLoader::load("../../asset/teapot/teapot.obj", g_ctxt);
-    auto teapot = new aten::instance<aten::object>(obj, g_ctxt, aten::mat4::Identity);
+    auto teapot = aten::TransformableFactory::createInstance<aten::object>(g_ctxt, obj, aten::mat4::Identity);
     scene->add(teapot);
 
     // TODO
@@ -106,7 +105,7 @@ void makeScene(aten::scene* scene)
 
 aten::material* createMaterial(aten::MaterialType type)
 {
-    aten::material* mtrl = aten::MaterialFactory::createMaterialWithDefaultValueAndAddToCtxt(g_ctxt, type);
+    aten::material* mtrl = g_ctxt.createMaterialWithDefaultValue(type);
 
     if (mtrl) {
         mtrl->setTextures(
@@ -455,7 +454,7 @@ int main()
         WIDTH * HEIGHT,
         1024);
 
-    auto envmap = aten::ImageLoader::load("../../asset/envmap/studio015.hdr");
+    auto envmap = aten::ImageLoader::load("../../asset/envmap/studio015.hdr", g_ctxt);
     aten::envmap bg;
     bg.init(envmap);
     aten::ImageBasedLight ibl(&bg);
@@ -483,9 +482,10 @@ int main()
 
         std::vector<idaten::TextureResource> tex;
         {
-            auto texs = aten::texture::getTextures();
+            auto texNum = g_ctxt.getTextureNum();
 
-            for (const auto t : texs) {
+            for (int i = 0; i < texNum; i++) {
+                auto t = g_ctxt.getTexture(i);
                 tex.push_back(
                     idaten::TextureResource(t->colors(), t->width(), t->height()));
             }

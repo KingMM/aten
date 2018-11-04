@@ -76,9 +76,9 @@ void onRun(aten::window* window)
 #endif
     }
 
-    atrous.getPositionMap().clearAsGLTexture(aten::vec4(real(1)));
-    atrous.getNormalMap().clearAsGLTexture(aten::vec4(real(0), real(0), real(0), real(-1)));
-    atrous.getAlbedoMap().clearAsGLTexture(aten::vec4(real(1)));
+    atrous.getPositionMap()->clearAsGLTexture(aten::vec4(real(1)));
+    atrous.getNormalMap()->clearAsGLTexture(aten::vec4(real(0), real(0), real(0), real(-1)));
+    atrous.getAlbedoMap()->clearAsGLTexture(aten::vec4(real(1)));
 
     aten::timer timer;
     timer.begin();
@@ -284,12 +284,13 @@ int main()
     blitter.setIsRenderRGB(true);
 
     atrous.init(
+        g_ctxt,
         WIDTH, HEIGHT,
         "../shader/fullscreen_vs.glsl", "../shader/atrous_fs.glsl",
         "../shader/fullscreen_vs.glsl", "../shader/atrous_final_fs.glsl");
 
 #ifdef ENABLE_ATROUS
-    aten::visualizer::addPostProc(&atrous);
+    g_visualizer->addPostProc(&atrous);
 #endif
     g_visualizer->addPostProc(&gamma);
     //aten::visualizer::addPostProc(&blitter);
@@ -321,7 +322,7 @@ int main()
         1024);
 
 #ifdef ENABLE_ENVMAP
-    auto envmap = aten::ImageLoader::load("../../asset/envmap/studio015.hdr");
+    auto envmap = aten::ImageLoader::load("../../asset/envmap/studio015.hdr", g_ctxt);
     aten::envmap bg;
     bg.init(envmap);
     aten::ImageBasedLight ibl(&bg);
@@ -351,9 +352,10 @@ int main()
 
         std::vector<idaten::TextureResource> tex;
         {
-            auto texs = aten::texture::getTextures();
+            auto texNum = g_ctxt.getTextureNum();
 
-            for (const auto t : texs) {
+            for (int i = 0; i < texNum; i++) {
+                auto t = g_ctxt.getTexture(i);
                 tex.push_back(
                     idaten::TextureResource(t->colors(), t->width(), t->height()));
             }
@@ -394,9 +396,9 @@ int main()
 
 #if 1
         g_tracer.enableRenderAOV(
-            atrous.getPositionMap().getGLTexHandle(),
-            atrous.getNormalMap().getGLTexHandle(),
-            atrous.getAlbedoMap().getGLTexHandle(),
+            atrous.getPositionMap()->getGLTexHandle(),
+            atrous.getNormalMap()->getGLTexHandle(),
+            atrous.getAlbedoMap()->getGLTexHandle(),
             aten::vec3(real(1)));
 #endif
     }

@@ -8,8 +8,6 @@
 #include "math/ray.h"
 #include "misc/datalist.h"
 
-#include "material/sample_texture.h"
-
 namespace AT_NAME {
     class Light;
 }
@@ -196,10 +194,10 @@ namespace aten
         void editTex(const char* name, int texid)
         {
             if (texid >= 0) {
-                auto tex = aten::texture::getTexture(texid);
+                /*auto tex = aten::texture::getTexture(texid);
                 if (tex) {
                     edit(name, tex->name());
-                }
+                }*/
             }
         }
 
@@ -324,38 +322,12 @@ namespace AT_NAME
             aten::texture* normalMap,
             aten::texture* roughnessMap);
 
-        virtual AT_DEVICE_MTRL_API aten::vec3 sampleAlbedoMap(real u, real v) const
-        {
-            return std::move(sampleTexture(m_param.albedoMap, u, v, real(1)));
-        }
+        virtual AT_DEVICE_MTRL_API aten::vec3 sampleAlbedoMap(real u, real v) const;
 
         virtual AT_DEVICE_MTRL_API void applyNormalMap(
             const aten::vec3& orgNml,
             aten::vec3& newNml,
             real u, real v) const;
-
-        static AT_DEVICE_MTRL_API void applyNormalMap(
-            const int normalMapIdx,
-            const aten::vec3& orgNml,
-            aten::vec3& newNml,
-            real u, real v)
-        {
-            if (normalMapIdx >= 0) {
-                auto nml = sampleTexture(normalMapIdx, u, v, real(0));
-                nml = real(2) * nml - aten::vec3(1);    // [0, 1] -> [-1, 1].
-                nml = normalize(nml);
-
-                aten::vec3 n = normalize(orgNml);
-                aten::vec3 t = aten::getOrthoVector(n);
-                aten::vec3 b = cross(n, t);
-
-                newNml = nml.z * n + nml.x * t + nml.y * b;
-                newNml = normalize(newNml);
-            }
-            else {
-                newNml = normalize(orgNml);
-            }
-        }
 
         virtual AT_DEVICE_MTRL_API real computeFresnel(
             const aten::vec3& normal,
@@ -486,12 +458,6 @@ namespace AT_NAME
         {
             //AT_ASSERT(false);
             return false;
-        }
-
-        static inline AT_DEVICE_MTRL_API aten::vec3 sampleTexture(const int texid, real u, real v, real defaultValue, int lod = 0)
-        {
-            auto ret = AT_NAME::sampleTexture(texid, u, v, aten::vec3(defaultValue), lod);
-            return std::move(ret);
         }
 
         static const char* getMaterialTypeName(aten::MaterialType type);

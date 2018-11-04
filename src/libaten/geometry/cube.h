@@ -9,12 +9,12 @@
 namespace AT_NAME
 {
     class cube : public aten::geom<aten::transformable> {
-    public:
-        cube(const aten::vec3& center, real w, real h, real d, material* mtrl);
-        cube(real w, real h, real d, material* m)
-            : cube(aten::vec3(0), w, h, d, m)
-        {}
+        friend class TransformableFactory;
 
+    private:
+        cube(const aten::vec3& center, real w, real h, real d, material* mtrl);
+
+    public:
         virtual ~cube() {}
 
     public:
@@ -38,11 +38,6 @@ namespace AT_NAME
             const context& ctxt,
             aten::hitable::SamplePosNormalPdfResult* result,
             aten::sampler* sampler) const override final;
-
-        virtual const aten::GeomParameter& getParam() const override final
-        {
-            return m_param;
-        }
 
         virtual void evalHitResult(
             const context& ctxt,
@@ -77,8 +72,5 @@ namespace AT_NAME
         Face getRandomPosOn(aten::vec3& pos, aten::sampler* sampler) const;
 
         static Face findFace(const aten::vec3& d);
-
-    private:
-        aten::GeomParameter m_param;
     };
 }

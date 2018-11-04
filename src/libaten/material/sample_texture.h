@@ -17,6 +17,9 @@ namespace AT_NAME {
 #endif
 }
 #else
+
+#include "scene/context.h"
+
 namespace AT_NAME {
     inline AT_DEVICE_MTRL_API aten::vec3 sampleTexture(const int texid, real u, real v, const aten::vec3& defaultValue, int lod = 0)
     {
@@ -24,7 +27,8 @@ namespace AT_NAME {
 
         // TODO
         if (texid >= 0) {
-            auto tex = aten::texture::getTexture(texid);
+            const auto ctxt = aten::context::getPinnedContext();
+            auto tex = ctxt->getTexture(texid);
             if (tex) {
                 ret = tex->at(u, v);
             }
@@ -34,3 +38,28 @@ namespace AT_NAME {
     }
 }
 #endif
+
+namespace AT_NAME {
+    inline AT_DEVICE_MTRL_API void applyNormalMap(
+        const int normalMapIdx,
+        const aten::vec3& orgNml,
+        aten::vec3& newNml,
+        real u, real v)
+    {
+        if (normalMapIdx >= 0) {
+            auto nml = sampleTexture(normalMapIdx, u, v, aten::vec3(real(0)));
+            nml = real(2) * nml - aten::vec3(1);    // [0, 1] -> [-1, 1].
+            nml = normalize(nml);
+
+            aten::vec3 n = normalize(orgNml);
+            aten::vec3 t = aten::getOrthoVector(n);
+            aten::vec3 b = cross(n, t);
+
+            newNml = nml.z * n + nml.x * t + nml.y * b;
+            newNml = normalize(newNml);
+        }
+        else {
+            newNml = normalize(orgNml);
+        }
+    }
+}

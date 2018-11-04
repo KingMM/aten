@@ -238,8 +238,7 @@ void loadObj(const Options& opt)
     mtrlParam.ior = 0.2;
     mtrlParam.roughness = 0.2;
 
-    auto mtrl = aten::MaterialFactory::createMaterialWithMaterialParameterAndAddToCtxt(
-        g_ctxt,
+    auto mtrl = g_ctxt.createMaterialWithMaterialParameter(
         aten::MaterialType::GGX,
         mtrlParam,
         nullptr, nullptr, nullptr);
@@ -254,7 +253,7 @@ void loadObj(const Options& opt)
 #endif
 
     for (auto obj : g_objs) {
-        auto instance = new aten::instance<aten::object>(obj, g_ctxt, aten::mat4::Identity);
+        auto instance = aten::TransformableFactory::createInstance<aten::object>(g_ctxt, obj, aten::mat4::Identity);
         g_scene.add(instance);
     }
 
@@ -296,7 +295,7 @@ int main(int argc, char* argv[])
 
     loadObj(g_opt);
 
-    aten::texture::initAllAsGLTexture();
+    g_ctxt.initAllTexAsGLTexture();
 
     // TODO
     aten::vec3 pos(0, 1, 3);

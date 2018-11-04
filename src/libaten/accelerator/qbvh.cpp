@@ -15,7 +15,7 @@ namespace aten
         setBoundingBox(m_bvh.getBoundingbox());
 
         // Gather local-world matrix.
-        transformable::gatherAllTransformMatrixAndSetMtxIdx(m_mtxs);
+        ctxt.copyMatricesAndUpdateTransformableMatrixIdx(m_mtxs);
 
         std::vector<accelerator*> listBvh;
         std::map<hitable*, accelerator*> nestedBvhMap;
@@ -58,6 +58,7 @@ namespace aten
             bool isPrimitiveLeafBvh = (i > 0);
 
             auto numNodes = convertFromBvh(
+                ctxt,
                 isPrimitiveLeafBvh,
                 listBvhNode[i],
                 m_listQbvhNode[i]);
@@ -96,6 +97,7 @@ namespace aten
     }
 
     uint32_t qbvh::convertFromBvh(
+        const context& ctxt,
         bool isPrimitiveLeaf,
         std::vector<BvhNode>& listBvhNode,
         std::vector<QbvhNode>& listQbvhNode)
@@ -131,7 +133,7 @@ namespace aten
 
             if (numChildren == 0) {
                 // No children, so it is a leaf.
-                setQbvhNodeLeafParams(isPrimitiveLeaf, bvhNode, qbvhNode);
+                setQbvhNodeLeafParams(ctxt, isPrimitiveLeaf, bvhNode, qbvhNode);
                 continue;
             }
 
@@ -158,6 +160,7 @@ namespace aten
     }
 
     void qbvh::setQbvhNodeLeafParams(
+        const context& ctxt,
         bool isPrimitiveLeaf,
         const BvhNode& bvhNode,
         QbvhNode& qbvhNode)
@@ -243,12 +246,12 @@ namespace aten
             hitable* item = node->getItem();
 
             // 自分自身のIDを取得.
-            qbvhNode.shapeid = (float)transformable::findIdxAsHitable(item);
+            qbvhNode.shapeid = (float)ctxt.findTransformableIdxFromPointer(item);
 
             // もしなかったら、ネストしているので親のIDを取得.
             if (qbvhNode.shapeid < 0) {
                 if (nestParent) {
-                    qbvhNode.shapeid = (float)transformable::findIdxAsHitable(nestParent);
+                    qbvhNode.shapeid = (float)ctxt.findTransformableIdxFromPointer(nestParent);
                 }
             }
 
@@ -263,7 +266,7 @@ namespace aten
 
             if (isPrimitiveLeaf) {
                 // Leaves of this tree are primitive.
-                qbvhNode.primid = (float)face::findIdx(item);
+                qbvhNode.primid = (float)ctxt.findTriIdxFromPointer(item);
                 qbvhNode.exid = -1.0f;
             }
             else {
@@ -450,7 +453,7 @@ namespace aten
         aten::vec4 v2z;
 
         for (int i = 0; i < qnode.numChildren; i++) {
-            auto f = face::faces()[(int)primidx[i]];
+            auto f = ctxt.getTriangle((int)primidx[i]);
 
             const auto& faceParam = f->getParam();
 
@@ -554,9 +557,6 @@ namespace aten
             Intersect() {}
         } stackbuf[stacksize];
 
-        auto& shapes = transformable::getShapes();
-        auto& prims = face::faces();
-
         stackbuf[0] = Intersect(&listQbvhNode[exid][0], t_max);
         int stackpos = 1;
 
@@ -637,7 +637,7 @@ namespace aten
                     }
                 }
 #else
-                auto s = shapes[(int)pnode->shapeid];
+                auto s = ctxt.getTransformable((int)pnode->shapeid);
 
                 if (pnode->exid >= 0) {
                     // Traverse external qbvh.
@@ -665,7 +665,7 @@ namespace aten
                         isectTmp);
                 }
                 else if (pnode->primid >= 0) {
-                    auto f = prims[(int)pnode->primid];
+                    auto f = ctxt.getTriangle((int)pnode->primid);
                     isHit = f->hit(ctxt, r, t_min, t_max, isectTmp);
 
                     if (isHit) {
